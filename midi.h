@@ -3,3 +3,4 @@
 #include "bsp/board.h"
 
 void send_midi(uint8_t velocity);
+void change_note(uint8_t n);

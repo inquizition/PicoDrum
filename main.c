@@ -18,35 +18,67 @@ enum  {
 
 static uint32_t blink_interval_ms = BLINK_NOT_MOUNTED;
 const uint LED_PIN = PICO_DEFAULT_LED_PIN;
-const uint TEST_PIN = 16;
+const uint ENCODER_A = 16;
+const uint ENCODER_B = 17;
+const uint ENCODER_BUTTON = 10;
 
 static uint32_t last_edge_time;
+static uint32_t last_encoder_change;
+
 static bool adc_gated = false;
 static bool high_pulse = false;
 const uint32_t debounce_ms = 1;
+static uint32_t encoder_val = 40;
 
 void led_blinking_task(void);
 void midi_task(void);
 
 void gpio_callback(uint gpio, uint32_t events) {
-  if (events & GPIO_IRQ_EDGE_RISE) 
-  {
-    if(!adc_gated && high_pulse)
-    {
-      adc_stop_func();
-      gpio_put(TEST_PIN, 0);   // low
-      adc_gated = true;
-      last_edge_time = board_millis();
-      high_pulse = false;
-    }
+  if(gpio == ENCODER_BUTTON) {
+    printf("Button pressed\n", encoder_val);
+    return;
   }
-  if (events & GPIO_IRQ_EDGE_FALL)
-  {
-    if(!adc_gated && !high_pulse)
+  else if(gpio == ENCODER_A) {
+    if (board_millis() - last_encoder_change < 50)
     {
-      high_pulse = true;
-      adc_start_func();
-      gpio_put(TEST_PIN, 1);   // low
+      return;
+    }
+    if(gpio_get(ENCODER_B))
+    {
+      if (!(encoder_val >= 127))
+      {
+        encoder_val++;
+      }
+    }
+    else
+    {
+      if (!(encoder_val <= 0))
+      {
+        encoder_val--;
+      } 
+    }
+    change_note(encoder_val);
+    last_encoder_change = board_millis();
+    printf("Enc val: %d\n", encoder_val);
+  }
+  else if(gpio == GPIO_WATCH_PIN) {
+    if (events & GPIO_IRQ_EDGE_RISE) 
+    {
+      if(!adc_gated && high_pulse)
+      {
+        adc_stop_func();
+        adc_gated = true;
+        last_edge_time = board_millis();
+        high_pulse = false;
+      }
+    }
+    if (events & GPIO_IRQ_EDGE_FALL)
+    {
+      if(!adc_gated && !high_pulse)
+      {
+        high_pulse = true;
+        adc_start_func();
+      }
     }
   }
 }
@@ -56,10 +88,19 @@ int main() {
   stdio_init_all();
   tusb_init();
   gpio_init(GPIO_WATCH_PIN);
-  gpio_init(TEST_PIN);
-  gpio_set_dir(TEST_PIN, GPIO_OUT);
-  gpio_put(TEST_PIN, 0);   // low
+  gpio_init(ENCODER_A);
+  gpio_set_dir(ENCODER_A, GPIO_IN);
+  gpio_pull_up(ENCODER_A);
+  gpio_init(ENCODER_B);
+  gpio_set_dir(ENCODER_B, GPIO_IN);
+  gpio_pull_up(ENCODER_B);
 
+  gpio_init(ENCODER_BUTTON);
+  gpio_set_dir(ENCODER_BUTTON, GPIO_IN);
+  gpio_pull_up(ENCODER_BUTTON);
+  
+  gpio_set_irq_enabled_with_callback(ENCODER_A, GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
+  gpio_set_irq_enabled_with_callback(ENCODER_BUTTON, GPIO_IRQ_EDGE_RISE, true, &gpio_callback);
   gpio_set_irq_enabled_with_callback(GPIO_WATCH_PIN, GPIO_IRQ_EDGE_RISE | GPIO_IRQ_EDGE_FALL, true, &gpio_callback);
   gpio_pull_up(GPIO_WATCH_PIN);
 
